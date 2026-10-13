@@ -10,7 +10,7 @@ in TypeScript over Postgres, never by the LLM that writes the brief.
 This project rebuilds those metrics in **dbt and DuckDB** from the same raw files, and the build
 fails if a single number differs from what Velur's production engine computed.
 
-| | |
+| Check | Result |
 |---|---|
 | Metrics × days | 12 metrics × 219 days = **2,628 values** |
 | Equal to Velur's production engine | **2,628 of 2,628**, exact, including every ratio's last decimal |
