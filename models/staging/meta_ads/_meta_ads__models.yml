@@ -1,0 +1,12 @@
+models:
+  - name: stg_meta_ads__insights
+    description: One row per ad account per day, spend in integer cents.
+    columns:
+      - name: date_local
+        data_tests: [not_null]
+      - name: spend_cents
+        data_tests: [not_null]
+    data_tests:
+      - unique:
+          arguments:
+            column_name: "account_id || '|' || cast(date_local as varchar)"

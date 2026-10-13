@@ -1,0 +1,60 @@
+models:
+  - name: int_date_spine
+    description: Every day in the reporting window, from var reporting_start to var reporting_end.
+    columns:
+      - name: metric_date
+        data_tests: [not_null, unique]
+
+  - name: int_orders_daily
+    description: Orders, gross, discounts, new customers and returning orders per store-local day.
+    columns:
+      - name: metric_date
+        data_tests: [not_null, unique]
+
+  - name: int_refunds_daily
+    description: Refunds per day, dated on the day they were issued.
+    columns:
+      - name: metric_date
+        data_tests: [not_null, unique]
+
+  - name: int_ad_spend_daily
+    description: Ad spend per day across connected ad accounts.
+    columns:
+      - name: metric_date
+        data_tests: [not_null, unique]
+
+  - name: int_mrr_daily
+    description: MRR at the end of each day in the reporting window.
+    columns:
+      - name: metric_date
+        data_tests: [not_null, unique]
+
+unit_tests:
+  - name: guests_count_as_orders_but_are_never_new_or_returning
+    description: >
+      Velur's hand-derived golden case for July 10: K1 returns (first order July 1), K2 and K3
+      buy for the first time, and two guests check out. 5 orders, 2 new customers, 1 returning order.
+    model: int_orders_daily
+    given:
+      - input: ref('stg_shopify__orders')
+        rows:
+          - {order_id: k1-again, order_date_local: 2026-07-10, customer_ref: k1, gross_cents: 6000, discount_cents: 0, is_first_order: false}
+          - {order_id: k2-first, order_date_local: 2026-07-10, customer_ref: k2, gross_cents: 4000, discount_cents: 400, is_first_order: true}
+          - {order_id: k3-first, order_date_local: 2026-07-10, customer_ref: k3, gross_cents: 2500, discount_cents: 0, is_first_order: true}
+          - {order_id: g-1, order_date_local: 2026-07-10, customer_ref: null, gross_cents: 3000, discount_cents: 0, is_first_order: false}
+          - {order_id: g-2, order_date_local: 2026-07-10, customer_ref: null, gross_cents: 5000, discount_cents: 500, is_first_order: false}
+    expect:
+      rows:
+        - {metric_date: 2026-07-10, orders: 5, gross_cents: 20500, discount_cents: 900, new_customers: 2, returning_orders: 1}
+
+  - name: a_customer_new_today_is_not_returning_on_their_second_order_today
+    description: Two orders from the same first-time customer on one day are both new-customer orders, not a return.
+    model: int_orders_daily
+    given:
+      - input: ref('stg_shopify__orders')
+        rows:
+          - {order_id: a-1, order_date_local: 2026-07-11, customer_ref: a, gross_cents: 1000, discount_cents: 0, is_first_order: true}
+          - {order_id: a-2, order_date_local: 2026-07-11, customer_ref: a, gross_cents: 1000, discount_cents: 0, is_first_order: false}
+    expect:
+      rows:
+        - {metric_date: 2026-07-11, orders: 2, new_customers: 1, returning_orders: 0}

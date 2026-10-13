@@ -1,0 +1,34 @@
+sources:
+  - name: stripe
+    description: Stripe subscriptions and their items, flattened from the API's nested JSON, every column a string.
+    config:
+      meta:
+        external_location: "read_csv('data/raw/stripe/{name}.csv.gz', header = true, all_varchar = true)"
+    tables:
+      - name: subscriptions
+        columns:
+          - name: id
+            data_tests: [not_null, unique]
+          - name: status
+            data_tests:
+              - accepted_values:
+                  arguments:
+                    values: [active, past_due, unpaid, canceled, paused, trialing, incomplete, incomplete_expired]
+          - name: start_date
+            description: Unix seconds.
+            data_tests: [not_null]
+          - name: cancel_at_period_end
+            data_tests:
+              - accepted_values:
+                  arguments:
+                    values: ["true", "false"]
+      - name: subscription_items
+        columns:
+          - name: subscription_id
+            data_tests: [not_null]
+          - name: interval
+            description: MRR here is monthly-only, so any other billing interval fails the build instead of being summed wrongly.
+            data_tests:
+              - accepted_values:
+                  arguments:
+                    values: [month]

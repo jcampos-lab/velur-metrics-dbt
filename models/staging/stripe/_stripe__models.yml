@@ -1,0 +1,52 @@
+models:
+  - name: stg_stripe__subscriptions
+    description: >
+      One row per subscription that was ever billed: monthly price in cents and the store-local days
+      billing started and stopped. Trials and incomplete subscriptions are excluded.
+    columns:
+      - name: subscription_id
+        data_tests: [not_null, unique]
+      - name: customer_ref
+        data_tests: [not_null]
+      - name: monthly_price_cents
+        data_tests: [not_null]
+      - name: currency
+        description: One currency per store. MRR sums prices, so a second currency would corrupt it.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["{{ var('store_currency', 'EUR') }}"]
+      - name: started_date_local
+        data_tests: [not_null]
+      - name: canceled_date_local
+        description: The day billing stops. A scheduled cancellation stops at the end of the paid period.
+
+unit_tests:
+  - name: trials_never_count_and_scheduled_cancellations_end_at_period_end
+    description: >
+      A trial was never billed, so it is excluded. A subscription set to cancel at period end
+      keeps billing until current_period_end (June 30 here), not until the day the customer asked.
+    model: stg_stripe__subscriptions
+    given:
+      # Raw files are read straight from CSV, so each fixture states its own (all-string) columns.
+      # 1773568800 = 2026-03-15 10:00 UTC, 1780308000 = 2026-06-01 10:00 UTC, 1782820800 = 2026-06-30 12:00 UTC
+      - input: source('stripe', 'subscriptions')
+        format: sql
+        rows: |
+          select * from (values
+            ('sub-a',         'cus-a', 'eur', 'active',   '1773568800', cast(null as varchar),         'false'),
+            ('sub-trial',     'cus-t', 'eur', 'trialing', '1773568800', null,         'false'),
+            ('sub-scheduled', 'cus-s', 'eur', 'active',   '1773568800', '1780308000', 'true')
+          ) as t (id, customer, currency, status, start_date, canceled_at, cancel_at_period_end)
+      - input: source('stripe', 'subscription_items')
+        format: sql
+        rows: |
+          select * from (values
+            ('sub-a',         '1', '4900', 'month', cast(null as varchar)),
+            ('sub-trial',     '1', '4900', 'month', null),
+            ('sub-scheduled', '2', '2900', 'month', '1782820800')
+          ) as t (subscription_id, quantity, unit_amount, interval, current_period_end)
+    expect:
+      rows:
+        - {subscription_id: sub-a, monthly_price_cents: 4900, currency: EUR, started_date_local: 2026-03-15, canceled_date_local: null}
+        - {subscription_id: sub-scheduled, monthly_price_cents: 5800, currency: EUR, started_date_local: 2026-03-15, canceled_date_local: 2026-06-30}

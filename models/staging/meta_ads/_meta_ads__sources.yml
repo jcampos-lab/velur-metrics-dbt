@@ -1,0 +1,14 @@
+sources:
+  - name: meta_ads
+    description: Meta Ads account-level insights, one row per ad account per day, every column a string.
+    config:
+      meta:
+        external_location: "read_csv('data/raw/meta_ads/{name}.csv.gz', header = true, all_varchar = true)"
+    tables:
+      - name: insights
+        columns:
+          - name: date_start
+            description: The ad account's own calendar day. Meta cannot re-bucket days into the store's timezone.
+            data_tests: [not_null]
+          - name: account_id
+            data_tests: [not_null]

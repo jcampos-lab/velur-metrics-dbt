@@ -1,0 +1,7 @@
+velur_metrics:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      path: velur_metrics.duckdb
+      threads: 4

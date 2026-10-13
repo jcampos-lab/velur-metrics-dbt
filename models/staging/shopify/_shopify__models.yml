@@ -1,0 +1,65 @@
+models:
+  - name: stg_shopify__orders
+    description: One row per order, in integer cents and the store's calendar day, with the customer pseudonymized.
+    columns:
+      - name: order_id
+        data_tests: [not_null, unique]
+      - name: ordered_at
+        data_tests: [not_null]
+      - name: order_date_local
+        description: The store-local calendar day the order belongs to (an order at 22:30 UTC in June is the next day in Madrid).
+        data_tests: [not_null]
+      - name: customer_ref
+        description: sha256(salt:customer id), first 16 hex characters. Null for a guest checkout.
+      - name: gross_cents
+        description: Line items before discounts, excluding shipping and tax.
+        data_tests: [not_null]
+      - name: discount_cents
+        data_tests: [not_null]
+      - name: is_first_order
+        description: True on a known customer's earliest order. Never true for a guest.
+        data_tests: [not_null]
+
+  - name: stg_shopify__refunds
+    description: One row per refund, amount summed from its transactions, dated on the day it was issued.
+    columns:
+      - name: refund_id
+        data_tests: [not_null, unique]
+      - name: order_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_shopify__orders')
+                field: order_id
+      - name: refund_date_local
+        data_tests: [not_null]
+      - name: amount_cents
+        data_tests: [not_null]
+
+unit_tests:
+  - name: orders_land_on_the_store_day_and_guests_are_never_first
+    description: >
+      Hand-derived cases from Velur's golden tests. An order at 22:30 UTC on June 1 is 00:30 on
+      June 2 in Madrid, so it belongs to June 2. Shopify's subtotal is after discounts, so gross
+      adds them back. A guest checkout is revenue but never a first order.
+    model: stg_shopify__orders
+    given:
+      # Raw files are read straight from CSV, so the fixture states its own (all-string) columns.
+      - input: source('shopify', 'orders')
+        format: sql
+        rows: |
+          select * from (values
+            ('o-2004',   '2026-06-01T22:30:00Z', cast(null as varchar), 'EUR', 'C-204', '59.00', '0.00', '0.00', '0.00'),
+            ('k1-first', '2026-07-01T10:00:00Z', null, 'EUR', 'K1',    '50.00', '0.00', '0.00', '0.00'),
+            ('k1-again', '2026-07-10T08:00:00Z', null, 'EUR', 'K1',    '60.00', '0.00', '0.00', '0.00'),
+            ('k2-first', '2026-07-10T09:00:00Z', null, 'EUR', 'K2',    '36.00', '4.00', '0.00', '0.00'),
+            ('g-2',      '2026-07-10T12:00:00Z', null, 'EUR', null,    '45.00', '5.00', '0.00', '0.00')
+          ) as t (id, created_at, processed_at, currency, customer_id, subtotal_price, total_discounts, total_shipping, total_tax)
+    expect:
+      rows:
+        - {order_id: o-2004, order_date_local: 2026-06-02, gross_cents: 5900, discount_cents: 0, is_first_order: true}
+        - {order_id: k1-first, order_date_local: 2026-07-01, gross_cents: 5000, discount_cents: 0, is_first_order: true}
+        - {order_id: k1-again, order_date_local: 2026-07-10, gross_cents: 6000, discount_cents: 0, is_first_order: false}
+        - {order_id: k2-first, order_date_local: 2026-07-10, gross_cents: 4000, discount_cents: 400, is_first_order: true}
+        - {order_id: g-2, order_date_local: 2026-07-10, gross_cents: 5000, discount_cents: 500, is_first_order: false}

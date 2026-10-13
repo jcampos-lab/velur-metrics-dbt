@@ -1,0 +1,161 @@
+models:
+  - name: fct_daily_metrics
+    description: >
+      One row per store-local day with every daily revenue metric. Money is integer cents;
+      ratios are 4-decimal fractions, 0 when the denominator is 0.
+    config:
+      contract:
+        enforced: true
+    columns:
+      - name: metric_date
+        data_type: date
+        constraints: [{type: not_null}]
+        data_tests: [unique]
+      - name: gross_revenue_cents
+        data_type: bigint
+        description: Line items before discounts, excluding shipping and tax, on the order's day.
+      - name: discounts_cents
+        data_type: bigint
+      - name: refunds_cents
+        data_type: bigint
+        description: Refunds issued that day, whatever day the refunded order was placed.
+      - name: net_revenue_cents
+        data_type: bigint
+        description: Gross minus discounts minus refunds. Can be negative on a quiet day after a busy one.
+      - name: orders
+        data_type: bigint
+      - name: aov_cents
+        data_type: bigint
+        description: (Gross − discounts) ÷ orders, rounded half up to the cent.
+      - name: refund_rate
+        data_type: double
+        description: Refunds issued today ÷ gross booked today. A cash-flow view of returns, not a cohort return rate.
+      - name: new_customers
+        data_type: bigint
+      - name: repeat_customer_rate
+        data_type: double
+        description: Orders from returning known customers ÷ all orders. Guests count in the denominator only.
+      - name: mrr_cents
+        data_type: bigint
+        description: Monthly recurring revenue at the end of the day.
+      - name: ad_spend_cents
+        data_type: bigint
+      - name: blended_roas
+        data_type: double
+        description: Net revenue ÷ ad spend for the day. Our own arithmetic, not the ad platform's attributed figure.
+
+  - name: metric_snapshots
+    description: >
+      The same metrics in long format (metric, day, value, calc_version), shaped like Velur's
+      mart.metric_snapshots. This is the table the parity test compares with Velur's engine.
+    data_tests:
+      - unique:
+          arguments:
+            column_name: "metric_id || '|' || cast(metric_date as varchar)"
+    columns:
+      - name: metric_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('metric_definitions')
+                field: metric_id
+      - name: value
+        data_tests: [not_null]
+      - name: calc_version
+        data_tests: [not_null]
+
+  - name: rpt_weekly_business_review
+    description: >
+      One row per Monday-to-Sunday week, ratios recomputed from weekly sums and week-over-week
+      changes only against a positive base.
+    columns:
+      - name: week_start
+        data_tests: [not_null, unique]
+
+unit_tests:
+  - name: weekly_ratios_come_from_sums_and_partial_weeks_get_no_change
+    description: >
+      Monday Sep 14 books €10.00 with €5.00 refunded; the other six days book €100.00 each with no
+      refunds. The week's refund rate is 500 ÷ 61000 = 0.0082. Averaging the daily rates would claim
+      0.0714. The next week is up 15.7%. The last week has only two days, so it gets no change at all.
+    model: rpt_weekly_business_review
+    given:
+      - input: ref('fct_daily_metrics')
+        format: sql
+        rows: |
+          select
+              cast(d as date) as metric_date,
+              case when cast(d as date) = date '2026-09-14' then 1000 else 10000 end as gross_revenue_cents,
+              0 as discounts_cents,
+              case when cast(d as date) = date '2026-09-14' then 500 else 0 end as refunds_cents,
+              case when cast(d as date) = date '2026-09-14' then 500 else 10000 end as net_revenue_cents,
+              1 as orders,
+              0 as aov_cents,
+              0.0 as refund_rate,
+              0 as new_customers,
+              0.0 as repeat_customer_rate,
+              0 as mrr_cents,
+              0 as ad_spend_cents,
+              0.0 as blended_roas
+          from generate_series(timestamp '2026-09-14', timestamp '2026-09-29', interval 1 day) as t (d)
+    expect:
+      rows:
+        - {week_start: 2026-09-14, is_complete_week: true, gross_revenue_cents: 61000, refund_rate: 0.0082, net_revenue_cents: 60500, net_revenue_wow_change: null}
+        - {week_start: 2026-09-21, is_complete_week: true, gross_revenue_cents: 70000, refund_rate: 0.0, net_revenue_cents: 70000, net_revenue_wow_change: 0.157}
+        - {week_start: 2026-09-28, is_complete_week: false, gross_revenue_cents: 20000, refund_rate: 0.0, net_revenue_cents: 20000, net_revenue_wow_change: null}
+
+  - name: daily_metrics_match_velur_hand_derived_goldens
+    description: >
+      Velur's golden numbers for July 10, derived by hand: gross 20500, discounts 900, refunds 1000,
+      so net 18600; AOV round(19600 ÷ 5) = 3920; refund rate 1000 ÷ 20500 = 0.0488;
+      repeat rate 1 ÷ 5 = 0.2.
+    model: fct_daily_metrics
+    given:
+      - input: ref('int_date_spine')
+        rows:
+          - {metric_date: 2026-07-10}
+      - input: ref('int_orders_daily')
+        rows:
+          - {metric_date: 2026-07-10, orders: 5, gross_cents: 20500, discount_cents: 900, new_customers: 2, returning_orders: 1}
+      - input: ref('int_refunds_daily')
+        rows:
+          - {metric_date: 2026-07-10, refund_cents: 1000}
+      - input: ref('int_ad_spend_daily')
+        rows:
+          - {metric_date: 2026-07-10, spend_cents: 0}
+      - input: ref('int_mrr_daily')
+        rows:
+          - {metric_date: 2026-07-10, mrr_cents: 0}
+    expect:
+      rows:
+        - {metric_date: 2026-07-10, gross_revenue_cents: 20500, net_revenue_cents: 18600, orders: 5, aov_cents: 3920, refunds_cents: 1000, refund_rate: 0.0488, new_customers: 2, repeat_customer_rate: 0.2, blended_roas: 0}
+
+  - name: ratios_round_half_up_like_the_production_engine
+    description: >
+      The production engine is TypeScript, where Math.round sends ties toward +infinity. On a day
+      with negative net revenue, ROAS -0.00125 must round to -0.0012, not -0.0013. An empty day is
+      all zeros, never a division by zero.
+    model: fct_daily_metrics
+    given:
+      - input: ref('int_date_spine')
+        rows:
+          - {metric_date: 2026-08-01}
+          - {metric_date: 2026-08-02}
+      - input: ref('int_orders_daily')
+        rows:
+          - {metric_date: 2026-08-01, orders: 0, gross_cents: 0, discount_cents: 0, new_customers: 0, returning_orders: 0}
+      - input: ref('int_refunds_daily')
+        rows:
+          - {metric_date: 2026-08-01, refund_cents: 1000}
+      - input: ref('int_ad_spend_daily')
+        rows:
+          - {metric_date: 2026-08-01, spend_cents: 800000}
+      - input: ref('int_mrr_daily')
+        rows:
+          - {metric_date: 2026-08-01, mrr_cents: 0}
+          - {metric_date: 2026-08-02, mrr_cents: 0}
+    expect:
+      rows:
+        - {metric_date: 2026-08-01, net_revenue_cents: -1000, orders: 0, aov_cents: 0, refund_rate: 0, blended_roas: -0.0012}
+        - {metric_date: 2026-08-02, net_revenue_cents: 0, orders: 0, aov_cents: 0, refund_rate: 0, blended_roas: 0}

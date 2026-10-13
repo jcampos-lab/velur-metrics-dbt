@@ -1,0 +1,13 @@
+metric_id,label,unit,calc_version,is_component
+gross_revenue_daily,Gross revenue,cents,1,false
+net_revenue_daily,Net revenue,cents,1,false
+orders_daily,Orders,count,1,false
+aov_daily,Average order value,cents,1,false
+refund_amount_daily,Refunds,cents,1,false
+refund_rate_daily,Refund rate,ratio,1,false
+new_customers_daily,New customers,count,1,false
+repeat_customer_rate_daily,Repeat customer rate,ratio,2,false
+mrr_eod,MRR,cents,2,false
+ad_spend_daily,Ad spend,cents,1,false
+blended_roas_daily,Blended ROAS,multiple,1,false
+discounts_daily,Discounts,cents,1,true

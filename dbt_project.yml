@@ -1,0 +1,44 @@
+name: velur_metrics
+version: "1.0.0"
+profile: velur_metrics
+
+model-paths: ["models"]
+seed-paths: ["seeds"]
+test-paths: ["tests"]
+macro-paths: ["macros"]
+target-path: "target"
+clean-targets: ["target", "dbt_packages", "logs"]
+
+vars:
+  # A day is the store's calendar day, not UTC. Every timestamp is converted once, in staging.
+  store_timezone: "Europe/Madrid"
+  # Customer ids never leave staging: they are replaced by sha256(salt:id), first 16 hex characters.
+  customer_salt: "velur-metrics-dbt"
+  # The reporting calendar is explicit, so a day with no orders is a zero, never a missing row.
+  reporting_start: "2026-02-24"
+  reporting_end: "2026-09-30"
+
+models:
+  velur_metrics:
+    staging:
+      +materialized: view
+    intermediate:
+      +materialized: view
+    marts:
+      +materialized: table
+
+seeds:
+  velur_metrics:
+    velur_engine_snapshots:
+      +column_types:
+        metric_id: varchar
+        metric_date: date
+        value: double
+        calc_version: integer
+    metric_definitions:
+      +column_types:
+        metric_id: varchar
+        label: varchar
+        unit: varchar
+        calc_version: integer
+        is_component: boolean

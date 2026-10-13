@@ -1,0 +1,21 @@
+seeds:
+  - name: metric_definitions
+    description: >
+      The metric registry, exported from Velur: every metric's id, label, unit and current
+      calc_version. A formula change in Velur bumps its version here, and the build fails until
+      the SQL in metric_snapshots implements it.
+    columns:
+      - name: metric_id
+        data_tests: [not_null, unique]
+      - name: calc_version
+        data_tests: [not_null]
+
+  - name: velur_engine_snapshots
+    description: >
+      Every metric for every day of the reporting window, as computed by Velur's production
+      engine (TypeScript) from the same raw files in data/raw. The parity test requires
+      metric_snapshots to equal this table row for row.
+    data_tests:
+      - unique:
+          arguments:
+            column_name: "metric_id || '|' || cast(metric_date as varchar)"

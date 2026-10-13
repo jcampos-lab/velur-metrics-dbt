@@ -1,0 +1,36 @@
+sources:
+  - name: shopify
+    description: >
+      Shopify orders and refunds as an extract tool would land them: one CSV per object,
+      every column a string, nothing cleaned.
+    config:
+      meta:
+        external_location: "read_csv('data/raw/shopify/{name}.csv.gz', header = true, all_varchar = true)"
+    tables:
+      - name: orders
+        columns:
+          - name: id
+            data_tests: [not_null, unique]
+          - name: created_at
+            data_tests: [not_null]
+          - name: subtotal_price
+            description: After discounts, before shipping and tax (Shopify's convention).
+            data_tests: [not_null, is_money_string]
+          - name: total_discounts
+            data_tests: [not_null, is_money_string]
+          - name: total_shipping
+            data_tests: [is_money_string]
+          - name: total_tax
+            data_tests: [is_money_string]
+      - name: refunds
+        columns:
+          - name: id
+            data_tests: [not_null, unique]
+          - name: order_id
+            data_tests: [not_null]
+      - name: refund_transactions
+        columns:
+          - name: refund_id
+            data_tests: [not_null]
+          - name: amount
+            data_tests: [not_null, is_money_string]
