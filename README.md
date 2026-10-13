@@ -137,6 +137,13 @@ no real customer data. `seeds/velur_engine_snapshots.csv` holds the numbers Velu
 metric code computed from the same raw files. Velur's own code is private and is not part of this
 repository.
 
+## How it was built
+
+With Claude Code, the same way I build Velur. The metric definitions and rules are Velur's, which
+I designed; the dbt translation was written with Claude Code. What makes it trustworthy is not who
+typed the SQL but the parity test: the build only passes if every number equals Velur's
+production engine.
+
 ## Layout
 
 ```
